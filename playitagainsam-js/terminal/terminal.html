@@ -29,8 +29,36 @@
     --></script>
     <script type="text/javascript" src="../jschannel.js"></script>
     <script type="text/javascript" src="./vt100.js"></script>
-    <script type="text/javascript" src="./terminal.js"></script>
+    <script type="text/javascript">
+    function extend(subClass, baseClass) {
+      function inheritance() { }
+      inheritance.prototype          = baseClass.prototype;
+      subClass.prototype             = new inheritance();
+      subClass.prototype.constructor = subClass;
+      subClass.prototype.superClass  = baseClass.prototype;
+    };
+
+
+    function Terminal(container) {
+      var self = this;
+      this.superClass.constructor.call(this, container);
+      this.channel = Channel.build({
+        window: window.parent,
+        origin: "*",
+        scope: "pias",
+      });
+      this.channel.bind("write", function(trans, data) {
+        self.vt100(data);
+      });
+    };
+
+    extend(Terminal, VT100);
+
+    Terminal.prototype.keysPressed = function(ch) {
+      this.channel.notify({method: "keysPressed", params: ch});
+    }
+    </script>
   </head>
-  <body onload="setTimeout('new PIASTerminal()', 100)" scroll="no">
+  <body onload="setTimeout('new Terminal()', 100)" scroll="no">
   </body>
 </html>

@@ -1,6 +1,9 @@
 
 
-function PIASPlayer(container) {
+var PIAS = {};
+
+
+PIAS.Player = function (container) {
     this.container = $(container);
     this.events = [];
     this.current_event = 0;
@@ -9,7 +12,21 @@ function PIASPlayer(container) {
 }
 
 
-PIASPlayer.prototype.loadDataFile = function(datafile, cb) {
+PIAS.Player.prototype.play = function(datafile, cb) {
+    var self = this;
+    this.events = [];
+    this.current_event = 0;
+    this.done_callback = cb;
+    this.loadDataFile(datafile, function(err) {
+        if(err) {
+            return cb(err);
+        }
+        self.handleKeyPress("\n")
+    });
+}
+
+
+PIAS.Player.prototype.loadDataFile = function(datafile, cb) {
     var self = this;
     $.ajax({
         url: datafile,
@@ -48,76 +65,73 @@ PIASPlayer.prototype.loadDataFile = function(datafile, cb) {
 }
 
 
-PIASPlayer.prototype.play = function(datafile, cb) {
-    console.log(["playing", datafile]);
-    var self = this;
-    this.events = [];
-    this.current_event = 0;
-    this.done_callback = cb;
-    this.loadDataFile(datafile, function(err) {
-        console.log(["loaded", datafile]);
-        if(err) {
-            return cb(err);
-        }
-        self.dispatchNextEvent();
-    });
-}
-
-
-PIASPlayer.prototype.dispatchNextEvent = function() {
+PIAS.Player.prototype.dispatchNextEvent = function() {
     var self = this;
     if(this.current_event >= this.events.length) {
-        console.log(["done"]);
         if(this.done_callback) {
             this.done_callback(null);
             delete this.done_callback;
         }
     } else {
-        console.log(["dispatch", this.current_event]);
-        var moveToNextEvent = function() {
-            self.current_event += 1;
-            setTimeout(function() { self.dispatchNextEvent(); }, 0);
-        }
         var event = this.events[this.current_event];
-        if(event.act == "OPEN") {
-            new Terminal(this, function(err, term) {
-                self.terminals[event.term] = term;
-                moveToNextEvent();
-            });
-        } else if(event.act == "CLOSE") {
-            var term = this.terminals[event.term];
-            delete this.terminals[event.term];
-            term.close();
-            moveToNextEvent();
-        } else if (event.act == "PAUSE") {
-            setTimeout(moveToNextEvent, event.duration * 1000);
+        if (event.act == "PAUSE") {
+            setTimeout(function() { self.moveToNextEvent() },
+                       event.duration * 1000);
         } else if (event.act == "WRITE") {
             var term = this.terminals[event.term];
             term.write(event.data);
-            moveToNextEvent();
+            this.moveToNextEvent();
         }
     }
 }
 
 
-PIASPlayer.prototype.handleKeyPress = function(c) {
+PIAS.Player.prototype.handleKeyPress = function(c) {
+    var self = this;
     if(this.current_event < this.events.length) {
         var event = this.events[this.current_event];
-        if(event.act == "READ") {
-            console.log(["keypress", c, event.data]);
-            if(event.data == "\n" || event.data == "\r") {
-                if(c != "\n" && c != "\r") {
-                    return;
-                }
+        if(event.act == "OPEN" && this.isWaypointChar(c)) {
+            if(!self.terminals[event.term]) {
+                self.terminals[event.term] = true;
+                new PIAS.Terminal(this, function(err, term) {
+                    self.terminals[event.term] = term;
+                    self.moveToNextEvent();
+                });
             }
-            this.current_event += 1;
-            this.dispatchNextEvent();
+        } else if(event.act == "CLOSE" && this.isWaypointChar(c)) {
+            var term = this.terminals[event.term];
+            delete this.terminals[event.term];
+            term.close();
+            this.moveToNextEvent();
+        } else if(event.act == "READ") {
+            if(this.isWaypointChar(c)) {
+                this.moveToNextEvent();
+            } else if (!this.isWaypointChar(event.data)) {
+                this.moveToNextEvent();
+            }
         }
     }
 }
 
 
-function Terminal(player, cb) {
+PIAS.Player.prototype.isWaypointChar = function(c) {
+    if(c == "\n") {
+        return true;
+    }
+    if(c == "\r") {
+        return true;
+    }
+    return false;
+}
+
+PIAS.Player.prototype.moveToNextEvent = function() {
+    var self = this;
+    this.current_event += 1;
+    setTimeout(function() { self.dispatchNextEvent(); }, 0);
+}
+
+
+PIAS.Terminal = function(player, cb) {
     var self = this;
     this.player = player;
     this.frame = $("<iframe src='./terminal/terminal.html' width='800' height='240' />").appendTo(player.container);
@@ -137,11 +151,11 @@ function Terminal(player, cb) {
 }
 
 
-Terminal.prototype.write = function(data) {
+PIAS.Terminal.prototype.write = function(data) {
     this.channel.notify({ method: "write", params: data });
 }
 
 
-Terminal.prototype.close = function() {
+PIAS.Terminal.prototype.close = function() {
     this.frame.remove();
 }
