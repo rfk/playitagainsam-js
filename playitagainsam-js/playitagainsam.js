@@ -3,10 +3,21 @@ var PIAS = {};
 
 
 PIAS.url_root = (function() {
-    var err = new Error()
-    var fileline = err.stack.split("\n")[0].split("@")[1];
-    var fileurl = fileline.split(":").slice(0, -1).join(":");
-    return fileurl.split("/").slice(0, -1).join("/") + "/";
+    var errlines = (new Error()).stack.split("\n");
+    for(var i=0; i<errlines.length; i++) {
+        var endpos = errlines[i].lastIndexOf("playitagainsam.js");
+        if(endpos !== -1) {
+            var starts = ["@", "at "];
+            for(j=0; j<starts.length; j++) {
+                var startpos = errlines[i].indexOf(starts[j]);
+                if(startpos !== -1 && startpos < endpos) {
+                    startpos += starts[j].length;
+                    return errlines[i].substring(startpos, endpos);
+                }
+            }
+        }
+    }
+    return "/";
 })();
 
 
