@@ -1,6 +1,30 @@
 
-
 var PIAS = {};
+
+
+PIAS.url_root = (function() {
+    var err = new Error()
+    var fileline = err.stack.split("\n")[0].split("@")[1];
+    var fileurl = fileline.split(":").slice(0, -1).join(":");
+    return fileurl.split("/").slice(0, -1).join("/") + "/";
+})();
+
+
+PIAS.get_resource_url = function(resource) {
+    return PIAS.url_root + resource;
+}
+
+
+if(typeof jQuery === "undefined") {
+    var script_url = PIAS.get_resource_url("jquery-1.7.2.min.js");
+    document.write("<script src='" + script_url + "'></script>");
+}
+
+
+if(typeof Channel === "undefined") {
+    var script_url = PIAS.get_resource_url("jschannel.js");
+    document.write("<script src='" + script_url + "'></script>");
+}
 
 
 PIAS.Player = function (container) {
@@ -134,7 +158,8 @@ PIAS.Player.prototype.moveToNextEvent = function() {
 PIAS.Terminal = function(player, cb) {
     var self = this;
     this.player = player;
-    this.frame = $("<iframe src='./terminal/terminal.html' width='800' height='240' />").appendTo(player.container);
+    var frame_source = PIAS.get_resource_url("terminal/terminal.html");
+    this.frame = $("<iframe src='" + frame_source + "' width='800' height='240' />").appendTo(player.container);
     this.channel = Channel.build({
       window: this.frame[0].contentWindow,
       origin: "*",
