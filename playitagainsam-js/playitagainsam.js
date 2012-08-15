@@ -36,17 +36,24 @@ PIAS.Player = function (container) {
 }
 
 
-PIAS.Player.prototype.play = function(datafile, cb) {
+PIAS.Player.prototype.play = function(datasource, cb) {
     var self = this;
     this.events = [];
     this.current_event = 0;
-    this.done_callback = cb;
-    this.loadDataFile(datafile, function(err) {
+    this.done_callback = null;
+    var mycb = function(err) {
         if(err) {
-            return cb(err);
+            if(cb) { cb(err); }
+        } else {
+            self.done_callback = cb;
+            self.handleKeyPress("\n")
         }
-        self.handleKeyPress("\n")
-    });
+    }
+    if(typeof datasource === "string") {
+        this.loadDataFile(datasource, mycb);
+    } else {
+        this.loadEvents(datasource.events, mycb);
+    }
 }
 
 
@@ -55,37 +62,43 @@ PIAS.Player.prototype.loadDataFile = function(datafile, cb) {
     $.ajax({
         url: datafile,
         dataType: "json",
-        error: function() { if(cb) { cb("failed to load datafile"); }},
+        error: function(err) { if(cb) { cb(err); }},
         success: function(data) {
-            var events = data["events"];
-            if(events) {
-                for(var i=0; i<events.length; i++) {
-                    var event = events[i];
-                    //  Decompose ECHO events into alternating READ/WRITE.
-                    //  Decompose READ events into individual characters.
-                    if(event.act == "ECHO") {
-                        for(var j=0; j<event.data.length; j++) {
-                            self.events.push({act: "READ",
-                                              term: event.term,
-                                              data: event.data.charAt(j)})
-                            self.events.push({act: "WRITE",
-                                              term: event.term,
-                                              data: event.data.charAt(j)})
-                        }
-                    } else if(event.act == "READ") {
-                        for(var j=0; j<event.data.length; j++) {
-                            self.events.push({act: "READ",
-                                              term: event.term,
-                                              data: event.data.charAt(j)})
-                        }
-                    } else {
-                        self.events.push(event);
-                    }
-                }
+            if(data.events) {
+                self.loadEvents(data.events, cb);
+            } else {
+                cb("datafile contains no events");
             }
-            if(cb) { cb(null) };
         }
     });
+}
+
+
+PIAS.Player.prototype.loadEvents = function(events, cb) {
+    for(var i=0; i<events.length; i++) {
+        var event = events[i];
+        //  Decompose ECHO events into alternating READ/WRITE.
+        //  Decompose READ events into individual characters.
+        if(event.act == "ECHO") {
+            for(var j=0; j<event.data.length; j++) {
+                this.events.push({act: "READ",
+                                  term: event.term,
+                                  data: event.data.charAt(j)})
+                this.events.push({act: "WRITE",
+                                  term: event.term,
+                                  data: event.data.charAt(j)})
+            }
+        } else if(event.act == "READ") {
+            for(var j=0; j<event.data.length; j++) {
+                this.events.push({act: "READ",
+                                  term: event.term,
+                                  data: event.data.charAt(j)})
+            }
+        } else {
+            this.events.push(event);
+        }
+    }
+    cb(null);
 }
 
 
