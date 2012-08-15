@@ -3,6 +3,8 @@ var PIAS = {};
 
 
 PIAS.url_root = (function() {
+    // Hackery to find the URL of this file.
+    // Create an error, then parse the stack trace looking for filenames.
     var errlines = (new Error()).stack.split("\n");
     for(var i=0; i<errlines.length; i++) {
         var endpos = errlines[i].lastIndexOf("playitagainsam.js");
@@ -26,24 +28,41 @@ PIAS.get_resource_url = function(resource) {
 }
 
 
-if(typeof jQuery === "undefined") {
-    var script_url = PIAS.get_resource_url("jquery-1.7.2.min.js");
+PIAS.load_script = function(script) {
+    var script_url = PIAS.get_resource_url(script);
     document.write("<script src='" + script_url + "'></script>");
 }
 
 
+if(typeof $ === "undefined") {
+    PIAS.load_script("jquery-ui/jquery-1.7.2.min.js");
+}
+if(typeof $.widget === "undefined") {
+    PIAS.load_script("jquery-ui/jquery-ui-1.8.22.custom.min.js");
+}
 if(typeof Channel === "undefined") {
-    var script_url = PIAS.get_resource_url("jschannel.js");
-    document.write("<script src='" + script_url + "'></script>");
+    PIAS.load_script("jschannel.js");
 }
 
 
 PIAS.Player = function (container) {
+    var self = this;
     this.container = $(container);
     this.events = [];
     this.current_event = 0;
     this.done_callback = null;
     this.terminals = {};
+    this.container.addClass("pias-container");
+    this.container.empty();
+    // Use an overlay to capture key events.
+    // This helps us avoid having to click around between terminals
+    // and try to ferry events out of the correct one.
+    this.overlay = $("<input class='pias-overlay'>").appendTo(this.container);
+    this.overlay.keypress(function(evt) {
+        self.handleKeyPress(String.fromCharCode(evt.which));
+    });
+    this.overlay[0].focus();
+    this.resize();
 }
 
 
@@ -143,6 +162,9 @@ PIAS.Player.prototype.handleKeyPress = function(c) {
                 self.terminals[event.term] = true;
                 new PIAS.Terminal(this, function(err, term) {
                     self.terminals[event.term] = term;
+                    self.resize();
+                    console.log("focussing overlay");
+                    self.overlay[0].focus();
                     self.moveToNextEvent();
                 });
             }
@@ -178,6 +200,14 @@ PIAS.Player.prototype.moveToNextEvent = function() {
     setTimeout(function() { self.dispatchNextEvent(); }, 0);
 }
 
+PIAS.Player.prototype.resize = function() {
+    this.overlay.position({
+      my: "left top", at: "left top", of: this.container
+    });
+    this.overlay.width(this.container.width());
+    this.overlay.height(this.container.height());
+}
+
 
 PIAS.Terminal = function(player, cb) {
     var self = this;
@@ -194,7 +224,9 @@ PIAS.Terminal = function(player, cb) {
                   self.player.handleKeyPress(chars.charAt(j));
               }
           });
-          cb(null, self);
+          self.channel.bind("initialized", function(trans) {
+              cb(null, self);
+          });
       }
     });
 }

@@ -30,35 +30,26 @@
     <script type="text/javascript" src="../jschannel.js"></script>
     <script type="text/javascript" src="./vt100.js"></script>
     <script type="text/javascript">
-    function extend(subClass, baseClass) {
-      function inheritance() { }
-      inheritance.prototype          = baseClass.prototype;
-      subClass.prototype             = new inheritance();
-      subClass.prototype.constructor = subClass;
-      subClass.prototype.superClass  = baseClass.prototype;
-    };
 
-
-    function Terminal(container) {
-      var self = this;
-      this.superClass.constructor.call(this, container);
-      this.channel = Channel.build({
+    var terminal = null;
+    var channel = Channel.build({
         window: window.parent,
         origin: "*",
         scope: "pias",
+        onReady: function() {
+            terminal = new VT100();
+            terminal.keysPressed = function() {};
+            channel.notify({method: "initialized"});
+        }
       });
-      this.channel.bind("write", function(trans, data) {
-        self.vt100(data);
-      });
-    };
+    channel.bind("write", function(trans, data) {
+        if(terminal) {
+            terminal.vt100(data);
+        }
+    });
 
-    extend(Terminal, VT100);
-
-    Terminal.prototype.keysPressed = function(ch) {
-      this.channel.notify({method: "keysPressed", params: ch});
-    }
     </script>
   </head>
-  <body onload="setTimeout('new Terminal()', 100)" scroll="no">
-  </body>
+  <unbody onload="setTimeout('terminal = new VT100()', 100)" scroll="no">
+  <body scroll="no"></body>
 </html>
