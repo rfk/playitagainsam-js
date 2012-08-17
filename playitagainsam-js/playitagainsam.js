@@ -48,6 +48,7 @@ if(typeof Channel === "undefined") {
 PIAS.Player = function (container) {
     var self = this;
     this.container = $(container);
+    this.container.empty();
     this.events = [];
     this.current_event = 0;
     this.done_callback = null;
@@ -71,6 +72,9 @@ PIAS.Player.prototype.play = function(datasource, cb) {
     this.events = [];
     this.current_event = 0;
     this.done_callback = null;
+    for(var termid in this.terminals) {
+        this.terminals[termid].close();
+    }
     var mycb = function(err) {
         if(err) {
             if(cb) { cb(err); }
@@ -109,6 +113,7 @@ PIAS.Player.prototype.loadEvents = function(events, cb) {
         var event = events[i];
         //  Decompose ECHO events into alternating READ/WRITE.
         //  Decompose READ events into individual characters.
+        //  Split WRITE events into sensible-sized chunks.
         if(event.act == "ECHO") {
             for(var j=0; j<event.data.length; j++) {
                 this.events.push({act: "READ",
@@ -124,6 +129,20 @@ PIAS.Player.prototype.loadEvents = function(events, cb) {
                                   term: event.term,
                                   data: event.data.charAt(j)})
             }
+        } else if(event.act == "WRITE") {
+            var max_write_size = 70;
+            if(event.data.length > max_write_size) {
+                console.log(["WRITE SIZE", event.data.length]);
+            }
+            while(event.data.length > max_write_size) {
+                this.events.push({act: "WRITE",
+                                  term: event.term,
+                                  data: event.data.substr(0, max_write_size)})
+                event.data = event.data.substr(max_write_size);
+            }
+            this.events.push({act: "WRITE",
+                              term: event.term,
+                              data: event.data})
         } else {
             this.events.push(event);
         }
@@ -134,6 +153,7 @@ PIAS.Player.prototype.loadEvents = function(events, cb) {
 
 PIAS.Player.prototype.dispatchNextEvent = function() {
     var self = this;
+    var moveToNextEvent = function() { self.moveToNextEvent(); }
     if(this.current_event >= this.events.length) {
         if(this.done_callback) {
             this.done_callback(null);
@@ -142,12 +162,24 @@ PIAS.Player.prototype.dispatchNextEvent = function() {
     } else {
         var event = this.events[this.current_event];
         if (event.act == "PAUSE") {
-            setTimeout(function() { self.moveToNextEvent() },
-                       event.duration * 1000);
+            var duration = Math.round(event.duration * 1000);
+            // Don't bother with tiny pauses, JS is laggy enough already.
+            if(duration < 10) {
+                duration = 1;
+            }
+            setTimeout(moveToNextEvent, duration);
         } else if (event.act == "WRITE") {
             var term = this.terminals[event.term];
-            term.write(event.data);
-            this.moveToNextEvent();
+            term.write(event.data, moveToNextEvent);
+        } else if (event.act == "READ") {
+            // Transfer the cursor to the desired terminal.
+            for(var termid in this.terminals) {
+                if(termid == event.term) {
+                    this.terminals[termid].focus();
+                } else {
+                    this.terminals[termid].blur();
+                }
+            }
         }
     }
 }
@@ -155,15 +187,15 @@ PIAS.Player.prototype.dispatchNextEvent = function() {
 
 PIAS.Player.prototype.handleKeyPress = function(c) {
     var self = this;
+    var moveToNextEvent = function() { self.moveToNextEvent(); }
     if(this.current_event < this.events.length) {
         var event = this.events[this.current_event];
         if(event.act == "OPEN" && this.isWaypointChar(c)) {
             if(!self.terminals[event.term]) {
                 self.terminals[event.term] = true;
-                new PIAS.Terminal(this, function(err, term) {
+                new PIAS.Terminal(this, event.size, function(err, term) {
                     self.terminals[event.term] = term;
                     self.resize();
-                    console.log("focussing overlay");
                     self.overlay[0].focus();
                     self.moveToNextEvent();
                 });
@@ -173,11 +205,18 @@ PIAS.Player.prototype.handleKeyPress = function(c) {
             delete this.terminals[event.term];
             term.close();
             this.moveToNextEvent();
+        } else if (event.act == "RESIZE" && this.isWaypointChar(c)) {
+            var term = this.terminals[event.term];
+            term.resize(event.size, moveToNextEvent);
         } else if(event.act == "READ") {
             if(this.isWaypointChar(c)) {
-                this.moveToNextEvent();
-            } else if (!this.isWaypointChar(event.data)) {
-                this.moveToNextEvent();
+                if (this.isWaypointChar(event.data)) {
+                    this.moveToNextEvent();
+                }
+            } else {
+                if (!this.isWaypointChar(event.data)) {
+                    this.moveToNextEvent();
+                }
             }
         }
     }
@@ -197,7 +236,10 @@ PIAS.Player.prototype.isWaypointChar = function(c) {
 PIAS.Player.prototype.moveToNextEvent = function() {
     var self = this;
     this.current_event += 1;
-    setTimeout(function() { self.dispatchNextEvent(); }, 0);
+    this.dispatchNextEvent();
+    // This seems like a good idea, but it results in slow typing
+    // because it means we have to wait for processing of pending key events.
+    //setTimeout(function() { self.dispatchNextEvent(); }, 0);
 }
 
 PIAS.Player.prototype.resize = function() {
@@ -209,31 +251,61 @@ PIAS.Player.prototype.resize = function() {
 }
 
 
-PIAS.Terminal = function(player, cb) {
+PIAS.Player.prototype.destroy = function() {
+    for(var termid in this.terminals) {
+        this.terminals[termid].close();
+    }
+    this.container.empty();
+}
+
+
+PIAS.Terminal = function(player, size, cb) {
     var self = this;
     this.player = player;
     var frame_source = PIAS.get_resource_url("terminal/terminal.html");
-    this.frame = $("<iframe src='" + frame_source + "' width='800' height='240' />").appendTo(player.container);
+    this.frame = $("<iframe src='" + frame_source + "'/>");
+    this.frame.appendTo(player.container);
     this.channel = Channel.build({
       window: this.frame[0].contentWindow,
       origin: "*",
       scope: "pias",
       onReady: function() {
-          self.channel.bind("keysPressed", function(trans, chars) {
-              for(var j=0; j<chars.length; j++) {
-                  self.player.handleKeyPress(chars.charAt(j));
-              }
-          });
-          self.channel.bind("initialized", function(trans) {
-              cb(null, self);
+          self.channel.bind("initialized", function(trans, dims) {
+              self.resize(size || [80, 24], function(err) {
+                  cb(err, self);
+              });
           });
       }
     });
 }
 
 
-PIAS.Terminal.prototype.write = function(data) {
-    this.channel.notify({ method: "write", params: data });
+PIAS.Terminal.prototype.write = function(data, cb) {
+    this.channel.call({ method: "write", params: data, success: function() {
+        cb(null);
+    }});
+}
+
+
+PIAS.Terminal.prototype.resize = function(size, cb) {
+    var self = this;
+    this.channel.call({method: "getsize", error: cb, success: function(d) {
+        var incr_w = (size[0] - d.terminalWidth) * d.cursorWidth;
+        var incr_h = (size[1] - d.terminalHeight) * d.cursorHeight;
+        self.frame.width(self.frame.width() + incr_w);
+        self.frame.height(self.frame.height() + incr_h);
+        cb(null);
+    }});
+}
+
+
+PIAS.Terminal.prototype.focus = function() {
+    this.channel.notify({ method: "focus" });
+}
+
+
+PIAS.Terminal.prototype.blur = function() {
+    this.channel.notify({ method: "blur" });
 }
 
 
