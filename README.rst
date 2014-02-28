@@ -33,4 +33,8 @@ Or by passing in a javascript object with the script data already loaded::
 
 Pass a callback function as second argument if you want to know when the
 session as finished being player.  Call the "destroy()" method if you want
-to tear down the player early.  Watch this space for better documentation...
+to tear down the player early.  
+
+An option for live replay of playtagainsam recorded sessions is not planned.
+
+Watch this space for better documentation...
