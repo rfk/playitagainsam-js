@@ -28,23 +28,6 @@ PIAS.get_resource_url = function(resource) {
 }
 
 
-PIAS.load_script = function(script) {
-    var script_url = PIAS.get_resource_url(script);
-    document.write("<script src='" + script_url + "'></script>");
-}
-
-
-if(typeof $ === "undefined") {
-    PIAS.load_script("jquery-ui/jquery-1.7.2.min.js");
-}
-if(typeof $.widget === "undefined") {
-    PIAS.load_script("jquery-ui/jquery-ui-1.8.22.custom.min.js");
-}
-if(typeof Channel === "undefined") {
-    PIAS.load_script("jschannel.js");
-}
-
-
 PIAS.Player = function (container) {
     var self = this;
     this.container = $(container);

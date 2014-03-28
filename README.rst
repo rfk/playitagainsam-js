@@ -16,10 +16,16 @@ Usage
 -----
 
 Serve the "playitagain-js" directory and all its contents from somewhere
-on your website.  Include the "playitagainsam-js/playitagainsam.js" and
-"playitagainsam-js/playitagainsam.css" files in your page.  Then when you
-want to play back a script, create a Player object within an existing
-content div::
+on your website.  Include the following resources into your page, in order:
+
+    *  playitagainsam-js/jquery-ui/jquery-1.7.2.min.js
+    *  playitagainsam-js/jquery-ui/jquery-ui-1.8.22.custom.min.js
+    *  playitagainsam-js/jschannel.js
+    *  playitagainsam-js/playitagainsam.js
+    *  playitagainsam-js/playitagainsam.css
+
+Then when you want to play back a script, create a Player object within an
+existing content div::
 
     var player = new PIAS.Player("#my-player-container");
 
